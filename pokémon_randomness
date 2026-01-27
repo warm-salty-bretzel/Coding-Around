@@ -1,0 +1,89 @@
+library(rvest)
+library(magrittr)
+library(stringr)
+library(dplyr)
+library(tidyr)
+
+brilliant_diamond <- "https://www.ign.com/wikis/pokemon-diamond-pearl-platinum-version/Brilliant_Diamond_Shining_Pearl_Pokedex_(List_of_Pokemon)"
+
+pokemon <- read_html(brilliant_diamond) %>% 
+  html_table() %>% 
+  `[[`(1)
+
+pokemon$Type <- gsub("([a-z])([A-Z])","\\1 \\2",pokemon$Type)
+
+pokemon$`Second Type` <- str_extract(pokemon$Type,"\\s[A-Z].+")
+
+pokemon$Type <- gsub("\\s[A-Z].+","",pokemon$Type)
+
+new_order <- c(1,2,3,5,4)
+
+pokemon <- pokemon[,new_order]
+
+sinnoh_numbers <- c(387:409,412:428,430,433:461,63:65,129,130,315,41,42,169,74:76,95,208,66:68,54,55,265:269,214,190,92:94,198,118,119,339,340,358,307,308,77,78,185,122,113,242,173,35,36,172,25,26,163,164,143,201,194,195,278,279,203,298,183,184,223,224,72,73,349,350,226,215,480:483)
+
+pokemon_newer <- pokemon[sinnoh_numbers,]
+
+correct_order <- c(1:19,71:73,74,75,20,76,21,77:84,22,23,85:89,24:26,90:94,27:35,95,96,36:40,97:100,41,101:104,42,102,43,44,106,107,45,46,108,109,47,110,48,111,49,112:116,50,117:121,51:55,122,123,56,57,124:128,58,59,129:131,60:64,132,65,66,134:137,67,138,68,69,139,70,140:143)
+
+pokemon_newest <- pokemon_newer[correct_order,]
+
+pokemon_newest$Type <- gsub("Pschic","Psychic",pokemon_newest$Type)
+
+pokemon_newest$`Second Type` <- gsub("\\s","",pokemon_newest$`Second Type`)
+
+starter_final_names <- list(
+  Infernape = c("Chimchar","Monferno","Infernape"),
+  Empoleon = c("Piplup","Prinplup","Empoleon"),
+  Torterra = c("Turtwig","Grotle","Torterra"))
+
+get_types <- function(df){
+  na.omit(c(df$Type,df$`Second Type`))
+}
+
+valid_team <- function(team,min_types = 6, max_types = 12){
+  types <- na.omit(c(team$Type,team$`Second Type`))
+  unique_types <- unique(types)
+  
+  n_types_unique <- length(unique_types)
+  n_types_unique >= min_types &&
+    n_types_unique <= max_types &&
+    length(types) == length(unique(types))
+}
+
+generate_team <- function(pokemon_df,
+                          starter_lines,
+                          team_size = 6,
+                          min_types = 6,
+                          max_types = 12,
+                          max_iter = 10000) {
+  
+  for (i in seq_len(max_iter)) {
+    
+    starter_final <- sample(names(starter_lines), 1)
+    
+    starter_team <- pokemon_df %>%
+      filter(Pokemon %in% starter_lines[[starter_final]])
+    
+    remaining_slots <- team_size - nrow(starter_team)
+    if (remaining_slots < 0) next
+    
+    team <- pokemon_df %>%
+      filter(!Pokemon %in% unlist(starter_lines)) %>%
+      slice_sample(n = remaining_slots) %>%
+      bind_rows(starter_team)
+    
+    if (valid_team(team,
+                   min_types = min_types,
+                   max_types = max_types)) {
+      return(team)
+    }
+  }
+  
+  stop("No valid team found - constraints too strict")
+}
+
+team <- generate_team(pokemon_df = pokemon_newest,
+                      starter_lines = starter_final_names)
+
+team
